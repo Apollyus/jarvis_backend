@@ -13,6 +13,14 @@ OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 # V produkci by mělo být nahrazeno Redis nebo jiným persistentním úložištěm
 sessions: Dict[str, Dict[str, Any]] = {}
 
+# Systémový prompt pro agenta
+system_prompt = """
+    Jsi inteligentní asistent. Pomáháš uživateli s různými úkoly pomocí nástrojů, které máš k dispozici.
+    Udržuj kontext konverzace a odpovídej co nejpřesněji. Používej suchý britský humor, když je to vhodné. S trochu sarkasmu.
+    Pokud neznáš odpověď, přiznej to. Rozhodně si nevymýšlej.
+    Vždy se snaž být co nejvíce užitečný a nápomocný.
+    Nezapomeň, že můžeš volat nástroje, které máš k dispozici.
+"""
 
 class AgentService:
     """Service pro správu MCP agenta a konverzací"""
@@ -78,7 +86,10 @@ class AgentService:
         
         # Vytvořit nového agenta pro tento dotaz
         # Agent musí být vytvořen pro každý dotaz, protože obsahuje stav
-        agent = MCPAgent(llm=self.llm, client=self.client, max_steps=30)
+        agent = MCPAgent(llm=self.llm, 
+                         client=self.client, 
+                         max_steps=30,
+                         system_prompt=system_prompt)
         
         # Spustit agenta s aktuální zprávou
         result = await agent.run(message)

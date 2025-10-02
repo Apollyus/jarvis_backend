@@ -2,6 +2,8 @@
 
 Technická dokumentace pro FastAPI backend systém MCP Agenta.
 
+> **🔒 DŮLEŽITÉ**: Toto API nyní vyžaduje autentizaci. Viz [Dokumentace autentizace](README_AUTENTIZACE.md) pro podrobnosti.
+
 ## 🏗️ Přehled architektury
 
 Toto API poskytuje konverzační rozhraní pro MCP (Model Context Protocol) agenta, který může interagovat s externími nástroji (jako je Notion). Systém je postaven na architektuře založené na session, která udržuje historii konverzace napříč více požadavky.
@@ -147,9 +149,21 @@ config = {
 
 ## 📡 API Endpointy
 
-### 1. REST API - `/api/chat` (POST)
+### 🔒 Vyžadována autentizace
+
+Všechny chatovací endpointy nyní vyžadují autentizaci pomocí API klíče. Zahrňte svůj API klíč v hlavičce `X-API-Key`:
+
+```bash
+-H "X-API-Key: vas_api_klic_zde"
+```
+
+Viz [Dokumentace autentizace](README_AUTENTIZACE.md) pro kompletní návod k nastavení a použití.
+
+### 1. REST API - `/api/chat` (POST) 🔒
 
 **Nejlepší pro**: Jednoduché interakce požadavek/odpověď, není potřeba streaming
+
+**Autentizace**: Vyžadována pomocí hlavičky `X-API-Key`
 
 **Požadavek**:
 ```json
@@ -173,16 +187,20 @@ config = {
 ```bash
 curl -X POST http://localhost:8000/api/chat \
   -H "Content-Type: application/json" \
-  -d '{"message": "What tasks do I have?", "session_id": "user-123"}'
+  -H "X-API-Key: vas_api_klic_zde" \
+  -d '{"message": "Jaké mám úkoly?", "session_id": "uzivatel-123"}'
 ```
 
-### 2. WebSocket - `/ws/chat`
+### 2. WebSocket - `/ws/chat` 🔒
 
 **Nejlepší pro**: Real-time obousměrná komunikace, interaktivní chatové aplikace
 
+**Autentizace**: Vyžadována pomocí parametru dotazu `api_key` nebo hlavičky `X-API-Key`
+
 **Připojení klienta**:
 ```javascript
-const ws = new WebSocket('ws://localhost:8000/ws/chat');
+// S parametrem dotazu (doporučeno)
+const ws = new WebSocket('ws://localhost:8000/ws/chat?api_key=vas_api_klic_zde');
 
 ws.onopen = () => {
   ws.send(JSON.stringify({
@@ -210,13 +228,16 @@ ws.onmessage = (event) => {
 - Skutečně obousměrná komunikace
 - Lepší pro chatová rozhraní
 
-### 3. Server-Sent Events - `/api/chat/stream` (GET)
+### 3. Server-Sent Events - `/api/chat/stream` (GET) 🔒
 
 **Nejlepší pro**: Jednosměrný streaming ze serveru na klienta
 
+**Autentizace**: Vyžadována pomocí hlavičky `X-API-Key`
+
 **Požadavek**:
 ```bash
-curl -N http://localhost:8000/api/chat/stream?message=Hello
+curl -N http://localhost:8000/api/chat/stream?message=Ahoj \
+  -H "X-API-Key: vas_api_klic_zde"
 ```
 
 **Stream odpovědi**:
@@ -248,14 +269,21 @@ eventSource.onmessage = (event) => {
 
 ### 4. Pomocné endpointy
 
-**Health Check** - `GET /health`
+**Health Check** - `GET /health` (Autentizace není vyžadována)
 ```json
-{"status": "healthy"}
+{
+  "status": "healthy",
+  "authentication": "nakonfigurováno"
+}
 ```
 
-**Root** - `GET /`
+**Root** - `GET /` (Autentizace není vyžadována)
 ```json
-{"message": "MCP Agent API is running"}
+{
+  "message": "MCP Agent API běží",
+  "version": "1.0.0",
+  "authentication": "API klíč vyžadován pro chráněné endpointy"
+}
 ```
 
 ## 🚀 Spuštění API
@@ -266,8 +294,19 @@ eventSource.onmessage = (event) => {
 2. **Proměnné prostředí**:
    ```bash
    # .env soubor
-   OPENROUTER_API_KEY=your_api_key_here
+   OPENROUTER_API_KEY=vas_openrouter_klic_zde
+   NOTION_API_KEY=vas_notion_klic_zde
+   
+   # Autentizace (POVINNÉ)
+   API_KEY=vas_bezpecny_api_klic_zde
    ```
+
+   **Vygenerování bezpečného API klíče**:
+   ```bash
+   python -c "import secrets; print(secrets.token_urlsafe(32))"
+   ```
+
+   Viz [Dokumentace autentizace](README_AUTENTIZACE.md) pro kompletní nastavení.
 
 ### Instalace
 
@@ -333,13 +372,14 @@ CMD ["python", "main.py"]
 ```bash
 curl -X POST http://localhost:8000/api/chat \
   -H "Content-Type: application/json" \
-  -d '{"message": "Hello", "session_id": "test-1"}'
+  -H "X-API-Key: vas_api_klic_zde" \
+  -d '{"message": "Ahoj", "session_id": "test-1"}'
 ```
 
 **WebSocket** (použití `websocat`):
 ```bash
-websocat ws://localhost:8000/ws/chat
-# Poté odeslat: {"message": "Hello", "session_id": "test-1"}
+websocat 'ws://localhost:8000/ws/chat?api_key=vas_api_klic_zde'
+# Poté odeslat: {"message": "Ahoj", "session_id": "test-1"}
 ```
 
 ### Automatizované testování
@@ -363,34 +403,47 @@ FastAPI automaticky generuje interaktivní API dokumentaci:
 ## 🔒 Bezpečnostní aspekty
 
 ### Aktuální implementace
-- CORS povolen pro localhost:3000 a localhost:3001
-- Není implementována autentizace
+- ✅ **Autentizace API klíčem**: Všechny chatovací endpointy chráněny (viz [`src/auth.py`](../src/auth.py))
+- ✅ **CORS**: Nakonfigurováno pro localhost:3000 a localhost:3001
+- ✅ **Proměnné prostředí**: Citlivé klíče uloženy v souboru `.env`
+- ✅ **Veřejné endpointy**: Health check a root zůstávají veřejné
+
+### Implementované zabezpečení
+
+**Autentizace API klíčem**:
+```python
+from auth import verify_api_key
+
+@app.post("/api/chat")
+async def chat(request: ChatMessage, api_key: str = Depends(verify_api_key)):
+    # Chráněný endpoint
+```
+
+**WebSocket autentizace**:
+```python
+# Ověří API klíč z parametru dotazu nebo hlavičky před přijetím připojení
+api_key = websocket.query_params.get("api_key") or websocket.headers.get("x-api-key")
+await verify_api_key(api_key)
+```
+
+Viz [Dokumentace autentizace](README_AUTENTIZACE.md) pro kompletní podrobnosti.
 
 ### Doporučení pro produkci
 
-1. **Autentizace pomocí API klíče**:
-```python
-from fastapi import Security, HTTPException
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-
-security = HTTPBearer()
-
-async def verify_token(credentials: HTTPAuthorizationCredentials = Security(security)):
-    if credentials.credentials != "your-secret-key":
-        raise HTTPException(status_code=401, detail="Invalid token")
-    return credentials.credentials
-```
-
-2. **Rate Limiting**:
+1. **Rate Limiting**:
 ```bash
 pip install slowapi
 ```
 
-3. **Pouze HTTPS** v produkci
-4. **CORS podle prostředí**:
+2. **Pouze HTTPS** v produkci
+3. **CORS podle prostředí**:
 ```python
 allow_origins = os.getenv("CORS_ORIGINS", "").split(",")
 ```
+
+4. **Rotace API klíčů**: Pravidelně generujte nové klíče
+5. **Monitoring**: Sledujte neautorizované pokusy o přístup
+6. **Redis pro sessions**: Nahraďte úložiště v paměti pro škálovatelnost
 
 ## 🎯 Souhrn návrhových rozhodnutí
 
@@ -412,12 +465,14 @@ allow_origins = os.getenv("CORS_ORIGINS", "").split(",")
 ├── main.py                      # Vstupní bod s CLI možnostmi
 ├── src/
 │   ├── api.py                   # FastAPI endpointy
+│   ├── auth.py                  # API key authentication
 │   └── lib/
 │       └── agent_core.py        # Logika agenta a správa session
 ├── test/
 │   └── api_conversation_test.py # Skript pro testování konverzace
 ├── docs/
-│   └── README_API.md           # Tento soubor
+│   ├── README_API.md           # Tento soubor
+│   └── README_AUTHENTICATION.md # Dokumentace autentizace
 └── requirements.txt            # Python závislosti
 ```
 

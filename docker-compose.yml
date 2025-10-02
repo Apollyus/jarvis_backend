@@ -12,6 +12,9 @@ services:
       # Load environment variables from .env file
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
       - NOTION_API_KEY=${NOTION_API_KEY}
+      - API_KEY=${API_KEY}
+      - USERNAME=${USERNAME}
+      - PASSWORD=${PASSWORD}
       # Optional: Override default settings
       - API_HOST=0.0.0.0
       - API_PORT=8000

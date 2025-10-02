@@ -46,8 +46,12 @@ class AgentService:
         # 2. Konfigurace MCP serverů (nástrojů)
         config = {
             "mcpServers": {
-                "Notion": {
-                    "url": "https://mcp.notion.com/mcp"
+                "notionApi": {
+                    "command": "npx",
+                    "args": ["-y", "@notionhq/notion-mcp-server"],
+                    "env": {
+                        "NOTION_TOKEN": f"ntn_{os.getenv('NOTION_TOKEN_SECRET', '****')}"
+                    }
                 }
             }
         }

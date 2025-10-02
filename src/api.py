@@ -1,4 +1,4 @@
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import json
@@ -9,6 +9,16 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent / "lib"))
 
 from agent_core import get_agent_service, run_agent_query
+from auth import (
+    verify_api_key,
+    is_auth_configured,
+    LoginRequest,
+    LoginResponse,
+    verify_user_credentials,
+    generate_api_key,
+    add_api_key,
+    get_user_count
+)
 
 app = FastAPI(title="MCP Agent API")
 
@@ -25,16 +35,100 @@ class ChatMessage(BaseModel):
     message: str
     session_id: str = "default"
 
-# REST endpoint (jednodušší varianta)
+# Endpoint pro přihlášení - VEŘEJNÝ
+@app.post("/api/auth/login", response_model=LoginResponse)
+async def login(request: LoginRequest):
+    """
+    Endpoint pro přihlášení uživatele.
+    Ověří uživatelské jméno a heslo a vrátí API klíč.
+    
+    Args:
+        request: LoginRequest s username a password
+        
+    Returns:
+        LoginResponse s api_key a message
+        
+    Raises:
+        HTTPException: 401 pokud jsou přihlašovací údaje neplatné
+        HTTPException: 503 pokud nejsou nakonfigurováni žádní uživatelé
+    """
+    # Zkontrolovat, zda jsou nakonfigurováni uživatelé
+    if get_user_count() == 0:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Nejsou nakonfigurováni žádní uživatelé. Nastavte USERNAME a PASSWORD v .env souboru."
+        )
+    
+    # Ověřit přihlašovací údaje
+    if not verify_user_credentials(request.username, request.password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Neplatné uživatelské jméno nebo heslo",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    # Vygenerovat nový API klíč
+    new_api_key = generate_api_key()
+    
+    # Přidat klíč do sady platných klíčů
+    add_api_key(new_api_key)
+    
+    return LoginResponse(
+        api_key=new_api_key,
+        message=f"Přihlášení úspěšné. Použijte tento API klíč v hlavičce X-API-Key pro přístup k chráněným endpointům."
+    )
+
+
+# REST endpoint (jednodušší varianta) - CHRÁNĚNÝ
 @app.post("/api/chat")
-async def chat(request: ChatMessage):
+async def chat(request: ChatMessage, api_key: str = Depends(verify_api_key)):
     result = await run_agent_query(request.message)
     return {"response": result, "session_id": request.session_id}
 
-# WebSocket endpoint (pro streaming)
+# WebSocket endpoint (pro streaming) - CHRÁNĚNÝ
 @app.websocket("/ws/chat")
 async def websocket_chat(websocket: WebSocket):
     await websocket.accept()
+    
+    # Ověřit API klíč z WebSocket připojení
+    try:
+        # Získat API klíč z parametrů dotazu nebo hlaviček
+        api_key = websocket.query_params.get("api_key") or websocket.headers.get("x-api-key")
+        
+        if not is_auth_configured():
+            await websocket.send_json({
+                "type": "error",
+                "message": "Chyba konfigurace serveru: Žádné API klíče nejsou nakonfigurovány"
+            })
+            await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+            return
+        
+        if not api_key:
+            await websocket.send_json({
+                "type": "error",
+                "message": "Vyžadována autentizace: Chybí API klíč. Poskytněte přes 'api_key' parametr dotazu nebo 'X-API-Key' hlavičku"
+            })
+            await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+            return
+        
+        # Ověřit API klíč
+        await verify_api_key(api_key)
+        
+    except HTTPException as e:
+        await websocket.send_json({
+            "type": "error",
+            "message": f"Autentizace selhala: {e.detail}"
+        })
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return
+    except Exception as e:
+        await websocket.send_json({
+            "type": "error",
+            "message": f"Chyba autentizace: {str(e)}"
+        })
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return
+    
     agent_service = get_agent_service()
     
     try:
@@ -72,9 +166,9 @@ async def websocket_chat(websocket: WebSocket):
         print(f"Error: {e}")
         await websocket.close()
 
-# Server-Sent Events varianta (alternativa k WebSocket)
+# Server-Sent Events varianta (alternativa k WebSocket) - PROTECTED
 @app.get("/api/chat/stream")
-async def chat_stream(message: str):
+async def chat_stream(message: str, api_key: str = Depends(verify_api_key)):
     from fastapi.responses import StreamingResponse
     
     async def event_generator():
@@ -103,11 +197,19 @@ async def chat_stream(message: str):
 
 @app.get("/")
 async def root():
-    return {"message": "MCP Agent API is running"}
+    return {
+        "message": "MCP Agent API běží",
+        "version": "1.0.0",
+        "authentication": "API klíč vyžadován pro chráněné endpointy"
+    }
 
 @app.get("/health")
 async def health():
-    return {"status": "healthy"}
+    auth_status = "nakonfigurováno" if is_auth_configured() else "není_nakonfigurováno"
+    return {
+        "status": "healthy",
+        "authentication": auth_status
+    }
 
 if __name__ == "__main__":
     import uvicorn

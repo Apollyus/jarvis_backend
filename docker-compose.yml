@@ -1,0 +1,40 @@
+version: '3.8'
+
+services:
+  jarvis-backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: jarvis-backend
+    ports:
+      - "8000:8000"
+    environment:
+      # Load environment variables from .env file
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+      - NOTION_API_KEY=${NOTION_API_KEY}
+      # Optional: Override default settings
+      - API_HOST=0.0.0.0
+      - API_PORT=8000
+      - LOG_LEVEL=info
+    env_file:
+      - .env
+    volumes: []
+      # Mount application code for development (comment out for production)
+      # - ./src:/app/src
+      # - ./main.py:/app/main.py
+      
+      # Logs directory (optional)
+      # - ./logs:/app/logs
+    restart: unless-stopped
+    networks:
+      - jarvis-network
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+networks:
+  jarvis-network:
+    driver: bridge

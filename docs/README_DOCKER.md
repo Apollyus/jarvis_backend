@@ -38,7 +38,7 @@ NOTION_API_KEY=your_notion_api_key_here
 
 # API Authentication
 # Generate a secure API key: https://www.uuidgenerator.net/ or use: python -c "import secrets; print(secrets.token_urlsafe(32))"
-API_KEY=BAsmxi16f2XCMy-4u0lfPhiXIyn8xzAHi8iedBQWPIY
+API_KEY=xxx
 
 # Optional: Multiple API keys (comma-separated)
 # API_KEYS=key1,key2,key3
@@ -568,3 +568,4 @@ Pro problémy nebo dotazy:
 
 
 Stejná jako hlavní projekt.
+

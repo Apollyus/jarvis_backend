@@ -1,3 +1,4 @@
+from urllib.parse import urlencode
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, HTTPException, status, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -8,6 +9,7 @@ import requests
 from dotenv import load_dotenv
 import sys
 from pathlib import Path
+import base64
 
 # Přidání src/lib do PYTHONPATH
 sys.path.insert(0, str(Path(__file__).parent / "lib"))
@@ -48,47 +50,55 @@ class ChatMessage(BaseModel):
 
 # TickTick OAuth 2.0 - zahájení autentizace
 @app.get("/api/ticktick/auth")
-async def ticktick_auth():
+async def ticktick_auth(state: str = "default"):
     """
-    Redirect uživatele na TickTick OAuth 2.0 autorizační stránku
+    Přesměruje uživatele na TickTick OAuth 2.0 autorizační stránku
     """
     if not TICKTICK_CLIENT_ID or not TICKTICK_CALLBACK_URL:
         raise HTTPException(status_code=500, detail="TickTick OAuth není nakonfigurován")
-    oauth_url = (
-        f"https://developer.ticktick.com/oauth/authorize?client_id={TICKTICK_CLIENT_ID}"
-        f"&redirect_uri={TICKTICK_CALLBACK_URL}"
-        f"&response_type=code"
-        f"&scope=tasks:read tasks:write user:read"
-    )
+    params = {
+        "scope": "tasks:read tasks:write",
+        "client_id": TICKTICK_CLIENT_ID,
+        "state": state,
+        "redirect_uri": TICKTICK_CALLBACK_URL,
+        "response_type": "code"
+    }
+    oauth_url = f"https://ticktick.com/oauth/authorize?{urlencode(params)}"
     return {"auth_url": oauth_url}
 
 # TickTick OAuth 2.0 - callback
 @app.get("/api/ticktick/callback")
 async def ticktick_callback(request: Request):
-    """
-    Zpracuje callback z TickTick, získá access/refresh token a uloží je.
-    """
     code = request.query_params.get("code")
     if not code:
         raise HTTPException(status_code=400, detail="Chybí autorizační kód")
-    # Výměna kódu za tokeny
-    token_url = "https://developer.ticktick.com/oauth/token"
+    token_url = "https://ticktick.com/oauth/token"
+    scope = "tasks:read tasks:write"
     data = {
-        "client_id": TICKTICK_CLIENT_ID,
-        "client_secret": TICKTICK_CLIENT_SECRET,
+        "code": code,
         "grant_type": "authorization_code",
-        "redirect_uri": TICKTICK_CALLBACK_URL,
-        "code": code
+        "scope": scope,
+        "redirect_uri": TICKTICK_CALLBACK_URL
     }
-    resp = requests.post(token_url, data=data)
+    # Basic Auth header
+    basic_auth = base64.b64encode(f"{TICKTICK_CLIENT_ID}:{TICKTICK_CLIENT_SECRET}".encode()).decode()
+    headers = {
+        "Authorization": f"Basic {basic_auth}",
+        "Content-Type": "application/x-www-form-urlencoded"
+    }
+    resp = requests.post(token_url, data=data, headers=headers)
     if resp.status_code != 200:
-        raise HTTPException(status_code=500, detail=f"Chyba při získávání tokenu: {resp.text}")
+        return {
+            "detail": f"Chyba při získávání tokenu: {resp.text}",
+            "status_code": resp.status_code,
+            "response": resp.text
+        }
     tokens = resp.json()
-    # Uložení tokenů do souboru
     tokens["obtained_at"] = int(time.time())
+    Path(TICKTICK_TOKEN_PATH).parent.mkdir(parents=True, exist_ok=True)
     with open(TICKTICK_TOKEN_PATH, "w", encoding="utf-8") as f:
         json.dump(tokens, f, ensure_ascii=False, indent=2)
-    return {"message": "Tokeny úspěšně získány a uloženy.", "tokens": tokens}
+    return {"detail": "Tokeny úspěšně získány a uloženy.", "tokens": tokens}
 
 
 # Endpoint pro přihlášení - VEŘEJNÝ

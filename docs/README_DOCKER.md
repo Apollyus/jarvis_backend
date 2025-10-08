@@ -36,10 +36,17 @@ Vytvořte soubor `.env` v kořenovém adresáři projektu s následujícími pro
 OPENROUTER_API_KEY=your_openrouter_api_key_here
 NOTION_API_KEY=your_notion_api_key_here
 
-# Optional: Override defaults
-API_HOST=0.0.0.0
-API_PORT=8000
-LOG_LEVEL=info
+# API Authentication
+# Generate a secure API key: https://www.uuidgenerator.net/ or use: python -c "import secrets; print(secrets.token_urlsafe(32))"
+API_KEY=xxx
+
+# Optional: Multiple API keys (comma-separated)
+# API_KEYS=key1,key2,key3
+
+# User Login Credentials (for /api/auth/login endpoint)
+# Username and password for generating API keys via login
+USERNAME=admin
+PASSWORD=your_secure_password_here
 ```
 
 **⚠️ DŮLEŽITÉ**: Nikdy necommitujte soubor `.env` do verzovacího systému. Obsahuje citlivé přihlašovací údaje.
@@ -559,4 +566,6 @@ Pro problémy nebo dotazy:
 
 ## Licence
 
+
 Stejná jako hlavní projekt.
+

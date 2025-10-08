@@ -1,12 +1,23 @@
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, HTTPException, status
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, HTTPException, status, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import json
+import os
+import time
+import requests
+from dotenv import load_dotenv
 import sys
 from pathlib import Path
 
 # Přidání src/lib do PYTHONPATH
 sys.path.insert(0, str(Path(__file__).parent / "lib"))
+
+# Načtení TickTick OAuth konfigurace
+load_dotenv()
+TICKTICK_CLIENT_ID = os.getenv("TICKTICK_CLIENT_ID")
+TICKTICK_CLIENT_SECRET = os.getenv("TICKTICK_CLIENT_SECRET")
+TICKTICK_CALLBACK_URL = os.getenv("TICKTICK_CALLBACK_URL")
+TICKTICK_TOKEN_PATH = str(Path(__file__).parent / "lib" / "tokens" / "ticktick_tokens.json")
 
 from agent_core import get_agent_service, run_agent_query
 from auth import (
@@ -25,7 +36,7 @@ app = FastAPI(title="MCP Agent API")
 # CORS pro Next.js (běží defaultně na localhost:3000)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:3001"],
+    allow_origins=["http://localhost:5173", "http://localhost:5174"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -34,6 +45,51 @@ app.add_middleware(
 class ChatMessage(BaseModel):
     message: str
     session_id: str = "default"
+
+# TickTick OAuth 2.0 - zahájení autentizace
+@app.get("/api/ticktick/auth")
+async def ticktick_auth():
+    """
+    Redirect uživatele na TickTick OAuth 2.0 autorizační stránku
+    """
+    if not TICKTICK_CLIENT_ID or not TICKTICK_CALLBACK_URL:
+        raise HTTPException(status_code=500, detail="TickTick OAuth není nakonfigurován")
+    oauth_url = (
+        f"https://developer.ticktick.com/oauth/authorize?client_id={TICKTICK_CLIENT_ID}"
+        f"&redirect_uri={TICKTICK_CALLBACK_URL}"
+        f"&response_type=code"
+        f"&scope=tasks:read tasks:write user:read"
+    )
+    return {"auth_url": oauth_url}
+
+# TickTick OAuth 2.0 - callback
+@app.get("/api/ticktick/callback")
+async def ticktick_callback(request: Request):
+    """
+    Zpracuje callback z TickTick, získá access/refresh token a uloží je.
+    """
+    code = request.query_params.get("code")
+    if not code:
+        raise HTTPException(status_code=400, detail="Chybí autorizační kód")
+    # Výměna kódu za tokeny
+    token_url = "https://developer.ticktick.com/oauth/token"
+    data = {
+        "client_id": TICKTICK_CLIENT_ID,
+        "client_secret": TICKTICK_CLIENT_SECRET,
+        "grant_type": "authorization_code",
+        "redirect_uri": TICKTICK_CALLBACK_URL,
+        "code": code
+    }
+    resp = requests.post(token_url, data=data)
+    if resp.status_code != 200:
+        raise HTTPException(status_code=500, detail=f"Chyba při získávání tokenu: {resp.text}")
+    tokens = resp.json()
+    # Uložení tokenů do souboru
+    tokens["obtained_at"] = int(time.time())
+    with open(TICKTICK_TOKEN_PATH, "w", encoding="utf-8") as f:
+        json.dump(tokens, f, ensure_ascii=False, indent=2)
+    return {"message": "Tokeny úspěšně získány a uloženy.", "tokens": tokens}
+
 
 # Endpoint pro přihlášení - VEŘEJNÝ
 @app.post("/api/auth/login", response_model=LoginResponse)

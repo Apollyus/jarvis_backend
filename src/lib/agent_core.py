@@ -72,11 +72,6 @@ class AgentService:
                 "history": []
             }
         session = sessions[session_id]
-        # Přidat uživatelskou zprávu do historie
-        session["history"].append({
-            "role": "user",
-            "content": message
-        })
         # Vytvořit nového agenta pro tento dotaz
         agent = MCPAgent(
             llm=self.llm,
@@ -85,7 +80,7 @@ class AgentService:
             system_prompt=system_prompt,
             memory_enabled=True
         )
-        # Předat historii do agenta
+        # Předat historii do agenta (bez aktuální zprávy)
         for msg in session["history"]:
             if msg["role"] == "user":
                 agent.add_to_history(HumanMessage(content=msg["content"]))
@@ -93,6 +88,11 @@ class AgentService:
                 agent.add_to_history(AIMessage(content=msg["content"]))
         # Spustit agenta s aktuální zprávou
         result = await agent.run(message)
+        # Přidat uživatelskou zprávu do historie až po odpovědi
+        session["history"].append({
+            "role": "user",
+            "content": message
+        })
         # Přidat odpověď agenta do historie
         session["history"].append({
             "role": "assistant",

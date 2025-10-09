@@ -38,7 +38,7 @@ app = FastAPI(title="MCP Agent API")
 # CORS pro Next.js (běží defaultně na localhost:3000)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:5174"],
+    allow_origins=["http://localhost:5173", "http://localhost:5174", "https://agent.vojtechfal.cz", "https://ai.vojtechfal.cz"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

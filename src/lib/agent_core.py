@@ -52,7 +52,11 @@ class AgentService:
                     "env": {
                         "NOTION_TOKEN": f"ntn_{os.getenv('NOTION_TOKEN_SECRET', '****')}"
                     }
-                }
+                },
+                "ticktick": {
+                    "command": "python",
+                    "args": ["src/ticktick-mcp/server.py", "run"]
+                },
             }
         }
         

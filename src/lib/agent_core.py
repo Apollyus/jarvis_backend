@@ -8,6 +8,7 @@ from typing import Dict, Any
 
 dotenv.load_dotenv()
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
+NOTION_API_KEY = os.getenv("NOTION_API_KEY")
 
 # Globální sessions pro ukládání historie konverzací
 sessions: Dict[str, Dict[str, Any]] = {}
@@ -40,11 +41,12 @@ class AgentService:
         )
         config = {
             "mcpServers": {
-                "notionApi": {
-                    "command": "npx",
-                    "args": ["-y", "@notionhq/notion-mcp-server"],
+                "notion-mcp": {
+                    "command": "python",
+                    "args": ["-m", "notion_mcp.server"],
                     "env": {
-                        "NOTION_TOKEN": f"ntn_{os.getenv('NOTION_TOKEN_SECRET', '****')}"
+                        "PYTHONPATH": "/app/src",
+                        "NOTION_API_KEY": NOTION_API_KEY
                     }
                 },
                 "ticktick": {
@@ -88,7 +90,7 @@ class AgentService:
                 agent.add_to_history(AIMessage(content=msg["content"]))
         # Spustit agenta s aktuální zprávou
         result = await agent.run(message)
-        # Přidat uživatelskou zprávu do historie až po odpovědi
+        # Přidat uživatelskou zprávu do historie (jen jednou)
         session["history"].append({
             "role": "user",
             "content": message

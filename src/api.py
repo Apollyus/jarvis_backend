@@ -148,7 +148,7 @@ async def login(request: LoginRequest):
 # REST endpoint (jednodušší varianta) - CHRÁNĚNÝ
 @app.post("/api/chat")
 async def chat(request: ChatMessage, api_key: str = Depends(verify_api_key)):
-    result = await run_agent_query(request.message)
+    result = await run_agent_query(request.message, request.session_id)
     return {"response": result, "session_id": request.session_id}
 
 # WebSocket endpoint (pro streaming) - CHRÁNĚNÝ

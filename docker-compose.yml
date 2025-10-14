@@ -21,7 +21,9 @@ services:
       - LOG_LEVEL=info
     env_file:
       - .env
-    volumes: []
+    volumes:
+      # Persistent token storage - tokeny přežijí restart containeru
+      - ./src/lib/tokens:/app/src/lib/tokens
       # Mount application code for development (comment out for production)
       # - ./src:/app/src
       # - ./main.py:/app/main.py

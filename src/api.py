@@ -14,12 +14,19 @@ import base64
 # Přidání src/lib do PYTHONPATH
 sys.path.insert(0, str(Path(__file__).parent / "lib"))
 
-# Načtení TickTick OAuth konfigurace
+# Načtení OAuth konfigurace
 load_dotenv()
+
+# TickTick OAuth
 TICKTICK_CLIENT_ID = os.getenv("TICKTICK_CLIENT_ID")
 TICKTICK_CLIENT_SECRET = os.getenv("TICKTICK_CLIENT_SECRET")
 TICKTICK_CALLBACK_URL = os.getenv("TICKTICK_CALLBACK_URL")
 TICKTICK_TOKEN_PATH = str(Path(__file__).parent / "lib" / "tokens" / "ticktick_tokens.json")
+
+# Notion OAuth (public MCP client)
+NOTION_CLIENT_ID = "YvWLaE2nKO861jM1"  # Veřejný Notion MCP client
+NOTION_CALLBACK_URL = "http://localhost:8080/callback"  # MCP má registrovaný jen localhost
+NOTION_TOKEN_PATH = str(Path(__file__).parent / "lib" / "tokens" / "notion_tokens.json")
 
 from agent_core import get_agent_service, run_agent_query
 from auth import (
@@ -99,6 +106,38 @@ async def ticktick_callback(request: Request):
     with open(TICKTICK_TOKEN_PATH, "w", encoding="utf-8") as f:
         json.dump(tokens, f, ensure_ascii=False, indent=2)
     return {"detail": "Tokeny úspěšně získány a uloženy.", "tokens": tokens}
+
+# Notion OAuth - upload tokenů (pro deployment z lokálu na VPS)
+@app.post("/api/notion/upload-tokens")
+async def upload_notion_tokens(
+    access_token: str,
+    refresh_token: str,
+    api_key: str = Depends(verify_api_key)
+):
+    """
+    Nahraje Notion tokeny přímo (pro použití když OAuth callback nefunguje na VPS).
+    Vyžaduje API klíč pro autentizaci.
+    
+    Použití:
+        curl -X POST https://xxx.xxx/api/notion/upload-tokens \
+             -H "X-API-Key: your-api-key" \
+             -H "Content-Type: application/json" \
+             -d '{"access_token": "...", "refresh_token": "..."}'
+    """
+    tokens = {
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "token_type": "bearer",
+        "expires_in": 3600,
+        "scope": "",
+        "obtained_at": int(time.time())
+    }
+    
+    Path(NOTION_TOKEN_PATH).parent.mkdir(parents=True, exist_ok=True)
+    with open(NOTION_TOKEN_PATH, "w", encoding="utf-8") as f:
+        json.dump(tokens, f, ensure_ascii=False, indent=2)
+    
+    return {"detail": "Notion tokeny úspěšně nahrány a uloženy."}
 
 
 # Endpoint pro přihlášení - VEŘEJNÝ

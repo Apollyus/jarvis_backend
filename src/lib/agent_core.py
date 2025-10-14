@@ -4,7 +4,14 @@ from langchain_openai import ChatOpenAI
 from mcp_use import MCPAgent, MCPClient
 import dotenv
 import os
+import sys
+from pathlib import Path
 from typing import Dict, Any
+
+# Přidej src adresář do path (pro import notion_client)
+sys.path.insert(0, str(Path(__file__).parent.parent))
+sys.path.insert(0, str(Path(__file__).parent.parent / "notion-mcp"))
+from notion_client import get_notion_access_token
 
 dotenv.load_dotenv()
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
@@ -19,13 +26,6 @@ system_prompt = """
     Pokud neznáš odpověď, přiznej to. Rozhodně si nevymýšlej.
     Vždy se snaž být co nejvíce užitečný a nápomocný.
     Nezapomeň, že můžeš volat nástroje, které máš k dispozici.
-    
-    DŮLEŽITÉ: Pro vytváření stránek v Notionu:
-    - Pokud nástroj API-post-page vyžaduje page_id jako povinný parametr, NEJDŘÍVE musíš použít API-get-search 
-      k nalezení existující stránky, kterou použiješ jako parent
-    - Pokud uživatel chce vytvořit stránku "na nejvyšší úrovni" nebo "samostatnou stránku", 
-      použij vyhledávání k nalezení nějaké hlavní/domovské stránky jako parent
-    - Alternativně se zeptej uživatele na název existující stránky, do které má být nová stránka vložena
 """
 
 class AgentService:
@@ -47,14 +47,11 @@ class AgentService:
         )
         config = {
             "mcpServers": {
-                "notionApi": {
-                    "command": "npx",
-                    "args": ["-y", "@notionhq/notion-mcp-server"],
-                    "env": {
-                        "NOTION_TOKEN": f"ntn_{os.getenv('NOTION_TOKEN_SECRET', '****')}"
-                    }
+                "Notion": {
+                    "url": "https://mcp.notion.com/mcp",
+                    "auth": get_notion_access_token()
                 },
-                "ticktick": {
+                "TickTick": {
                     "command": "python",
                     "args": ["src/ticktick-mcp/server.py", "run"]
                 }

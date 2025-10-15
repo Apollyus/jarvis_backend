@@ -15,6 +15,7 @@ from notion_client import get_notion_access_token
 
 dotenv.load_dotenv()
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
+LINKUP_API_KEY = os.getenv("LINKUP_API_KEY")
 
 # Globální sessions pro ukládání historie konverzací
 sessions: Dict[str, Dict[str, Any]] = {}
@@ -54,6 +55,9 @@ class AgentService:
                 "TickTick": {
                     "command": "python",
                     "args": ["src/ticktick-mcp/server.py", "run"]
+                },
+                "linkup": {
+                    "url": "https://mcp.linkup.so/sse?apiKey={LINKUP_API_KEY}"
                 }
             }
         }

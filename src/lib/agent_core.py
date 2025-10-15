@@ -57,7 +57,7 @@ class AgentService:
                     "args": ["src/ticktick-mcp/server.py", "run"]
                 },
                 "linkup": {
-                    "url": "https://mcp.linkup.so/sse?apiKey={LINKUP_API_KEY}"
+                    "url": f"https://mcp.linkup.so/sse?apiKey={LINKUP_API_KEY}"
                 }
             }
         }

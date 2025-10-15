@@ -79,6 +79,12 @@ async def ticktick_callback(request: Request):
     code = request.query_params.get("code")
     if not code:
         raise HTTPException(status_code=400, detail="Chybí autorizační kód")
+    
+    # Log the received code for debugging
+    print(f"🔑 Received authorization code: {code}")
+    print(f"📍 Client ID: {TICKTICK_CLIENT_ID}")
+    print(f"🔗 Redirect URI: {TICKTICK_CALLBACK_URL}")
+    
     token_url = "https://ticktick.com/oauth/token"
     scope = "tasks:read tasks:write"
     data = {
@@ -87,28 +93,63 @@ async def ticktick_callback(request: Request):
         "scope": scope,
         "redirect_uri": TICKTICK_CALLBACK_URL
     }
+    
     # Basic Auth header
     basic_auth = base64.b64encode(f"{TICKTICK_CLIENT_ID}:{TICKTICK_CLIENT_SECRET}".encode()).decode()
     headers = {
         "Authorization": f"Basic {basic_auth}",
         "Content-Type": "application/x-www-form-urlencoded"
     }
-    resp = requests.post(token_url, data=data, headers=headers)
-    if resp.status_code != 200:
+    
+    print(f"📤 Sending token request to {token_url}")
+    print(f"📦 Data: {data}")
+    
+    try:
+        resp = requests.post(token_url, data=data, headers=headers)
+        
+        print(f"📥 Response status: {resp.status_code}")
+        print(f"📄 Response headers: {dict(resp.headers)}")
+        print(f"📝 Response body: {resp.text[:1000]}")
+        
+        if resp.status_code != 200:
+            return {
+                "error": "Token exchange failed",
+                "detail": f"Chyba při získávání tokenu: {resp.text}",
+                "status_code": resp.status_code,
+                "response": resp.text,
+                "request_data": data,
+                "token_url": token_url
+            }
+        
+        tokens = resp.json()
+        print(f"✅ Tokens received: {list(tokens.keys())}")
+        
+        tokens["obtained_at"] = int(time.time())
+        # Přidej client_id a client_secret pro refresh token
+        tokens["client_id"] = TICKTICK_CLIENT_ID
+        tokens["client_secret"] = TICKTICK_CLIENT_SECRET
+        
+        Path(TICKTICK_TOKEN_PATH).parent.mkdir(parents=True, exist_ok=True)
+        with open(TICKTICK_TOKEN_PATH, "w", encoding="utf-8") as f:
+            json.dump(tokens, f, ensure_ascii=False, indent=2)
+        
+        print(f"💾 Tokens saved to {TICKTICK_TOKEN_PATH}")
+        
         return {
-            "detail": f"Chyba při získávání tokenu: {resp.text}",
-            "status_code": resp.status_code,
-            "response": resp.text
+            "success": True,
+            "detail": "Tokeny úspěšně získány a uloženy.", 
+            "token_keys": list(tokens.keys()),
+            "saved_to": TICKTICK_TOKEN_PATH
         }
-    tokens = resp.json()
-    tokens["obtained_at"] = int(time.time())
-    # Přidej client_id a client_secret pro refresh token
-    tokens["client_id"] = TICKTICK_CLIENT_ID
-    tokens["client_secret"] = TICKTICK_CLIENT_SECRET
-    Path(TICKTICK_TOKEN_PATH).parent.mkdir(parents=True, exist_ok=True)
-    with open(TICKTICK_TOKEN_PATH, "w", encoding="utf-8") as f:
-        json.dump(tokens, f, ensure_ascii=False, indent=2)
-    return {"detail": "Tokeny úspěšně získány a uloženy.", "tokens": tokens}
+    except Exception as e:
+        print(f"❌ Exception occurred: {e}")
+        import traceback
+        traceback.print_exc()
+        return {
+            "error": "Exception during token exchange",
+            "detail": str(e),
+            "traceback": traceback.format_exc()
+        }
 
 # Notion OAuth - upload tokenů (pro deployment z lokálu na VPS)
 @app.post("/api/notion/upload-tokens")

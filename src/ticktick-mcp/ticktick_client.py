@@ -54,6 +54,9 @@ class TickTickClient:
         if not self.refresh_token or not self.client_id or not self.client_secret:
             logger.warning("Chybí refresh token nebo client credentials.")
             return False
+        
+        logger.info("🔄 Attempting to refresh access token...")
+        
         token_data = {
             "grant_type": "refresh_token",
             "refresh_token": self.refresh_token
@@ -66,6 +69,14 @@ class TickTickClient:
         }
         try:
             response = requests.post(self.token_url, data=token_data, headers=headers)
+            
+            # Log the response for debugging
+            logger.info(f"Refresh token response status: {response.status_code}")
+            if response.status_code != 200:
+                logger.error(f"Refresh token failed with status {response.status_code}")
+                logger.error(f"Response: {response.text[:500]}")
+                return False
+            
             response.raise_for_status()
             tokens = response.json()
             self.access_token = tokens.get('access_token')
@@ -80,10 +91,12 @@ class TickTickClient:
                     "client_id": self.client_id,
                     "client_secret": self.client_secret
                 }, f, ensure_ascii=False, indent=2)
-            logger.info("Access token refreshed successfully.")
+            logger.info("✓ Access token refreshed successfully.")
             return True
         except requests.exceptions.RequestException as e:
-            logger.error(f"Error refreshing access token: {e}")
+            logger.error(f"❌ Error refreshing access token: {e}")
+            if hasattr(e, 'response') and e.response is not None:
+                logger.error(f"Response text: {e.response.text[:500]}")
             return False
 
     def _make_request(self, method: str, endpoint: str, data=None) -> Dict:
@@ -107,10 +120,25 @@ class TickTickClient:
                         response = requests.post(url, headers=self.headers, json=data)
                     elif method == "DELETE":
                         response = requests.delete(url, headers=self.headers)
+                else:
+                    logger.error("Failed to refresh access token. Re-authentication required.")
+                    return {"error": "Authentication failed. Access token expired and refresh failed. Please re-authenticate via /api/ticktick/auth"}
+            
+            # Check for non-JSON error responses (HTML error pages)
+            if response.status_code >= 400:
+                logger.error(f"API error {response.status_code}: {response.text[:500]}")
+                return {"error": f"TickTick API error {response.status_code}: {response.text[:200]}"}
+            
             response.raise_for_status()
             if response.status_code == 204 or response.text == "":
                 return {}
-            return response.json()
+            
+            # Try to parse JSON, handle HTML responses
+            try:
+                return response.json()
+            except json.JSONDecodeError:
+                logger.error(f"Invalid JSON response: {response.text[:500]}")
+                return {"error": f"Invalid API response (not JSON): {response.text[:200]}"}
         except requests.exceptions.RequestException as e:
             logger.error(f"API request failed: {e}")
             return {"error": str(e)}

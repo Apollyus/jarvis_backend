@@ -567,6 +567,34 @@ Pokud upgradujete z verze bez autentizace:
    - Ověřte, že veřejné endpointy stále fungují bez autentizace
    - Otestujte přihlašovací endpoint: `python test/test_login.py`
 
+## Automatické obnovování tokenů
+
+### Notion OAuth tokeny
+
+Aplikace nyní automaticky obnovuje Notion OAuth tokeny. Více informací najdete v [TOKEN_REFRESH.md](TOKEN_REFRESH.md).
+
+**Klíčové funkce:**
+- ✅ Automatická detekce expirace (5 minut před vypršením)
+- ✅ Proaktivní refresh pomocí refresh tokenu
+- ✅ Automatický retry při 401 chybě
+- ✅ Bezproblémové obnovení bez přerušení služby
+
+**Co to znamená pro vás:**
+- Tokeny se obnovují automaticky na pozadí
+- Nemusíte se obávat 401 chyb z důvodu expirace
+- Pouze když **refresh token** expiruje (obvykle po 90 dnech), musíte zopakovat autorizaci: `python get_notion_token.py`
+
+**Monitoring:**
+Sledujte logy pro automatické obnovení:
+```
+Token brzy expiruje (285s), obnovuji...
+✓ Notion access token úspěšně obnoven
+```
+
+### Konfigurace tokenů
+
+Po spuštění `python get_notion_token.py` se tokeny automaticky nahrají na server a uloží se do `src/lib/tokens/notion_tokens.json` včetně expiration timestampů pro správné obnovování.
+
 ## Podpora
 
 Pro problémy nebo otázky:
@@ -574,3 +602,4 @@ Pro problémy nebo otázky:
 2. Ověřte konfiguraci `.env`
 3. Testujte s příklady uvedenými výše
 4. Prostudujte [API Dokumentaci](README_API.md)
+5. Pro problémy s tokeny viz [TOKEN_REFRESH.md](TOKEN_REFRESH.md)

@@ -49,12 +49,11 @@ class AgentService:
             openai_api_key=OPENROUTER_API_KEY,
             temperature=0,
         )
+        # Získat Notion access token
+        notion_token = get_notion_access_token()
+        
         config = {
             "mcpServers": {
-                "Notion": {
-                    "url": "https://mcp.notion.com/mcp",
-                    "auth": get_notion_access_token()  # Získá fresh token s auto-refresh
-                },
                 "TickTick": {
                     "command": "python",
                     "args": ["src/ticktick-mcp/server.py", "run"]
@@ -64,6 +63,18 @@ class AgentService:
                 }
             }
         }
+        
+        # Přidat Notion pouze pokud máme validní token
+        # Používáme headers místo auth, abychom se vyhnuli automatickému OAuth flow
+        if notion_token:
+            config["mcpServers"]["Notion"] = {
+                "url": "https://mcp.notion.com/mcp",
+                "headers": {
+                    "Authorization": f"Bearer {notion_token}"
+                }
+            }
+        else:
+            logger.warning("⚠️  Notion není nakonfigurován - chybí access token")
         self.client = MCPClient.from_dict(config)
         self._initialized = True
     

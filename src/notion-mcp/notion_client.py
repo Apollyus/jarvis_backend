@@ -130,7 +130,7 @@ class NotionClient:
             logger.error(f"Chyba při obnovení Notion tokenu: {e}")
             return False
 
-    def get_access_token(self, auto_refresh: bool = True) -> str:
+    def get_access_token(self, auto_refresh: bool = True) -> Optional[str]:
         """
         Vrátí validní access token.
         
@@ -138,11 +138,11 @@ class NotionClient:
             auto_refresh: Pokud True, pokusí se token automaticky obnovit při expiraci
             
         Returns:
-            Access token string nebo prázdný string pokud není k dispozici
+            Access token string nebo None pokud není k dispozici
         """
         if not self.access_token:
             logger.warning("⚠️  Notion tokeny nejsou k dispozici. Navštiv /api/notion/auth pro autorizaci.")
-            return ""
+            return None
         
         # Kontrola expirace - obnovíme token 5 minut před jeho skutečnou expirací
         if auto_refresh and self.refresh_token and self.expires_at:
@@ -179,6 +179,6 @@ def get_notion_client() -> NotionClient:
         _client = NotionClient()
     return _client
 
-def get_notion_access_token() -> str:
-    """Helper funkce pro získání access tokenu"""
+def get_notion_access_token() -> Optional[str]:
+    """Helper funkce pro získání access tokenu - vrací None pokud token není dostupný"""
     return get_notion_client().get_access_token()

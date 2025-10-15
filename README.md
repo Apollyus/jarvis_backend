@@ -22,6 +22,7 @@ python main.py
 
 - [API Dokumentace](docs/README_API.md) - REST a WebSocket endpointy
 - [Autentizace](docs/README_AUTENTIZACE.md) - API klíče a zabezpečení
+- [Token Refresh](docs/TOKEN_REFRESH.md) - Automatické obnovování OAuth tokenů
 - [Testy](docs/README_TESTY.md) - Jak spustit testy
 - [Docker](docs/README_DOCKER.md) - Containerizace
 
@@ -35,6 +36,7 @@ python main.py
 ### Nástroje
 
 - **`oauth_cache_manager.py`** - Export/import OAuth tokenů pro VPS
+- **`get_notion_token.py`** - Získání Notion OAuth tokenů a upload na VPS
 
 ## ❓ FAQ - OAuth na VPS
 
@@ -60,12 +62,25 @@ python oauth_cache_manager.py import --input /tmp/tokens.zip
 **Q: Kde se tokeny ukládají?**
 
 A: 
-- Windows: `%LOCALAPPDATA%\mcp-use\`
-- Linux: `~/.cache/mcp-use/` nebo `$MCP_USE_CACHE_DIR`
+- **TickTick:** `%LOCALAPPDATA%\mcp-use\` (Windows) nebo `~/.cache/mcp-use/` (Linux)
+- **Notion:** `src/lib/tokens/notion_tokens.json` (automaticky vytvoří `get_notion_token.py`)
 
 **Q: Jak dlouho tokeny platí?**
 
-A: Refresh tokeny obvykle 90 dní. `mcp-use` automaticky obnovuje access tokeny. Po expiraci refresh tokenu musíš zopakovat autorizaci.
+A: 
+- **Access tokeny:** ~1 hodina
+- **Refresh tokeny:** ~90 dní
+- Aplikace **automaticky obnovuje access tokeny na pozadí** pomocí refresh tokenů
+- Po expiraci refresh tokenu musíš zopakovat autorizaci (`python get_notion_token.py`)
+
+**Q: Co když token expiruje během používání?**
+
+A: Aplikace automaticky:
+1. Detekuje expiraci 5 minut předem a proaktivně obnoví token
+2. Při 401 chybě se pokusí token obnovit a zopakuje dotaz
+3. Loguje obnovení: `✓ Notion access token úspěšně obnoven`
+
+Více viz [TOKEN_REFRESH.md](docs/TOKEN_REFRESH.md)
 
 **Q: Můžu to zautomatizovat?**
 
@@ -87,7 +102,8 @@ Viz [QUICKSTART_VPS.md](docs/QUICKSTART_VPS.md) pro podrobný postup.
 - ✅ Notion integrace (vytváření stránek, databází, atd.)
 - ✅ TickTick integrace (úkoly, projekty)
 - ✅ OAuth 2.0 autentizace
-- ✅ API klíče pro zabezpečení
+- ✅ **Automatické obnovování OAuth tokenů** (proaktivní refresh + retry při 401)
+- ✅ API klíče pro zabezpečení (+ login endpoint)
 - ✅ Docker support
 - ✅ **Headless deployment na VPS**
 

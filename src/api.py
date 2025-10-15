@@ -220,14 +220,18 @@ async def login(request: LoginRequest):
             headers={"WWW-Authenticate": "Bearer"},
         )
     
-    # Vygenerovat nový API klíč
-    new_api_key = generate_api_key()
+    # Vrátit existující API klíč z konfigurace místo generování nového
+    # Tím zajistíme, že klíč zůstane stejný i po restartu serveru
+    existing_api_key = os.getenv("API_KEY")
     
-    # Přidat klíč do sady platných klíčů
-    add_api_key(new_api_key)
+    if not existing_api_key:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="API klíč není nakonfigurován. Nastavte API_KEY v .env souboru."
+        )
     
     return LoginResponse(
-        api_key=new_api_key,
+        api_key=existing_api_key,
         message=f"Přihlášení úspěšné. Použijte tento API klíč v hlavičce X-API-Key pro přístup k chráněným endpointům."
     )
 

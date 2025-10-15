@@ -7,6 +7,7 @@ import json
 import requests
 import logging
 import os
+import time
 from pathlib import Path
 from typing import Dict, Any, Optional
 
@@ -27,6 +28,7 @@ class NotionClient:
         # Veřejný MCP client
         self.client_id = "YvWLaE2nKO861jM1"
         self.client_secret = None  # Public client nemá secret
+        self.expires_at = None  # Timestamp kdy token expiruje
 
     def _load_tokens(self):
         """Načti tokeny z JSON souboru"""
@@ -37,6 +39,7 @@ class NotionClient:
             )
             self.access_token = None
             self.refresh_token = None
+            self.expires_at = None
             return
         
         try:
@@ -45,6 +48,15 @@ class NotionClient:
             
             self.access_token = data.get("access_token")
             self.refresh_token = data.get("refresh_token")
+            
+            # Načti expiration timestamp nebo vypočítej z expires_in
+            if "expires_at" in data:
+                self.expires_at = data["expires_at"]
+            elif "obtained_at" in data and "expires_in" in data:
+                self.expires_at = data["obtained_at"] + data["expires_in"]
+            else:
+                # Pokud nemáme info o expiraci, předpokládáme že už expirovalo
+                self.expires_at = time.time() - 1
             
             if not self.access_token:
                 logger.warning("⚠️  Chybí access_token v notion_tokens.json")
@@ -55,6 +67,7 @@ class NotionClient:
             logger.error(f"Chyba při načítání Notion tokenů: {e}")
             self.access_token = None
             self.refresh_token = None
+            self.expires_at = None
 
     def _refresh_access_token(self) -> bool:
         """
@@ -94,13 +107,19 @@ class NotionClient:
             if 'refresh_token' in tokens:
                 self.refresh_token = tokens.get('refresh_token')
             
+            # Nastav expiration timestamp
+            expires_in = tokens.get('expires_in', 3600)
+            self.expires_at = time.time() + expires_in
+            
             # Ulož nové tokeny zpět do JSON souboru
             with open(TOKEN_PATH, "w", encoding="utf-8") as f:
                 json.dump({
                     "access_token": self.access_token,
                     "refresh_token": self.refresh_token,
                     "token_type": tokens.get("token_type", "bearer"),
-                    "expires_in": tokens.get("expires_in", 3600),
+                    "expires_in": expires_in,
+                    "expires_at": self.expires_at,
+                    "obtained_at": int(time.time()),
                     "scope": tokens.get("scope", "")
                 }, f, ensure_ascii=False, indent=2)
             
@@ -111,14 +130,35 @@ class NotionClient:
             logger.error(f"Chyba při obnovení Notion tokenu: {e}")
             return False
 
-    def get_access_token(self) -> str:
+    def get_access_token(self, auto_refresh: bool = True) -> str:
         """
         Vrátí validní access token.
-        Při 401 chybě se pokusí token obnovit.
+        
+        Args:
+            auto_refresh: Pokud True, pokusí se token automaticky obnovit při expiraci
+            
+        Returns:
+            Access token string nebo prázdný string pokud není k dispozici
         """
         if not self.access_token:
             logger.warning("⚠️  Notion tokeny nejsou k dispozici. Navštiv /api/notion/auth pro autorizaci.")
             return ""
+        
+        # Kontrola expirace - obnovíme token 5 minut před jeho skutečnou expirací
+        if auto_refresh and self.refresh_token and self.expires_at:
+            time_until_expiry = self.expires_at - time.time()
+            
+            # Pokud token vyprší za méně než 5 minut, obnov ho
+            if time_until_expiry < 300:  # 5 minut = 300 sekund
+                logger.info(f"Token brzy expiruje ({int(time_until_expiry)}s), obnovuji...")
+                try:
+                    if self._refresh_access_token():
+                        logger.info("✓ Token automaticky obnoven")
+                    else:
+                        logger.warning("⚠️  Automatické obnovení tokenu selhalo")
+                except Exception as e:
+                    logger.error(f"❌ Chyba při automatickém obnovení tokenu: {e}")
+                
         return self.access_token
 
     def handle_401(self) -> bool:

@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from langchain.schema import HumanMessage, AIMessage
 from langchain_openai import ChatOpenAI
 from mcp_use import MCPAgent, MCPClient
@@ -7,6 +8,8 @@ import os
 import sys
 from pathlib import Path
 from typing import Dict, Any
+
+logger = logging.getLogger(__name__)
 
 # Přidej src adresář do path (pro import notion_client)
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -50,7 +53,7 @@ class AgentService:
             "mcpServers": {
                 "Notion": {
                     "url": "https://mcp.notion.com/mcp",
-                    "auth": get_notion_access_token()
+                    "auth": get_notion_access_token()  # Získá fresh token s auto-refresh
                 },
                 "TickTick": {
                     "command": "python",
@@ -63,13 +66,29 @@ class AgentService:
         }
         self.client = MCPClient.from_dict(config)
         self._initialized = True
+    
+    async def reinitialize_client(self):
+        """Reinicializuje MCP klienta s novými tokeny"""
+        self._initialized = False
+        # Zavřít staré připojení pokud existuje
+        if self.client:
+            try:
+                # Pokud má close metodu, zavolej ji
+                if hasattr(self.client, 'close'):
+                    await self.client.close()
+            except Exception as e:
+                logger.warning(f"Chyba při zavírání starého klienta: {e}")
+        
+        self.client = None
+        await self.initialize()
 
-    async def run_query(self, message: str, session_id: str = "default") -> str:
+    async def run_query(self, message: str, session_id: str = "default", retry_on_auth_error: bool = True) -> str:
         """
         Spustí dotaz s podporou session a historie konverzace
         Args:
             message: Uživatelská zpráva
             session_id: ID session pro udržování kontextu
+            retry_on_auth_error: Pokud True, zkusí reinicializovat při auth chybě
         Returns:
             Odpověď agenta
         """
@@ -94,8 +113,22 @@ class AgentService:
                 agent.add_to_history(HumanMessage(content=msg["content"]))
             elif msg["role"] == "assistant":
                 agent.add_to_history(AIMessage(content=msg["content"]))
-        # Spustit agenta s aktuální zprávou
-        result = await agent.run(message)
+        
+        # Spustit agenta s aktuální zprávou - pokusit se obnovit při auth chybě
+        try:
+            result = await agent.run(message)
+        except Exception as e:
+            error_msg = str(e).lower()
+            # Pokud je to auth error (401, unauthorized, atd.), zkus reinicializovat
+            if retry_on_auth_error and any(keyword in error_msg for keyword in ['401', 'unauthorized', 'auth', 'authentication']):
+                logger.warning(f"⚠️  Detekována auth chyba, pokouším se reinicializovat s novými tokeny...")
+                await self.reinitialize_client()
+                # Zkus dotaz znovu (bez dalšího retry)
+                return await self.run_query(message, session_id, retry_on_auth_error=False)
+            else:
+                # Jiná chyba nebo už jsme zkusili retry - vyhoď výjimku
+                raise
+        
         # Přidat uživatelskou zprávu do historie až po odpovědi
         session["history"].append({
             "role": "user",

@@ -168,13 +168,17 @@ async def upload_notion_tokens(
              -H "Content-Type: application/json" \
              -d '{"access_token": "...", "refresh_token": "..."}'
     """
+    current_time = int(time.time())
+    expires_in = 3600  # Notion tokeny obvykle platí 1 hodinu
+    
     tokens = {
         "access_token": access_token,
         "refresh_token": refresh_token,
         "token_type": "bearer",
-        "expires_in": 3600,
-        "scope": "",
-        "obtained_at": int(time.time())
+        "expires_in": expires_in,
+        "expires_at": current_time + expires_in,
+        "obtained_at": current_time,
+        "scope": ""
     }
     
     Path(NOTION_TOKEN_PATH).parent.mkdir(parents=True, exist_ok=True)

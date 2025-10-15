@@ -29,7 +29,9 @@ COPY . .
 
 # Create a non-root user to run the application
 RUN useradd -m -u 1000 appuser && \
-    chown -R appuser:appuser /app
+    mkdir -p /app/src/lib/tokens && \
+    chown -R appuser:appuser /app && \
+    chmod -R 755 /app/src/lib/tokens
 USER appuser
 
 # Expose the application port

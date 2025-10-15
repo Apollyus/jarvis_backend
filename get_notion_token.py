@@ -1,13 +1,11 @@
 """
-Jednoduchý skript pro získání Notion OAuth Access Token
+Jednoduchý skript pro získání Notion OAuth Access Token a odeslání na VPS
 
 POUŽITÍ:
 1. Spusť: python get_notion_token.py
 2. Otevře se prohlížeč, schval přístup
-3. Tokeny se uloží do src/lib/tokens/notion_tokens.json
-4. Hotovo! Server bude automaticky obnovovat tokeny.
-
-Stejný princip jako TickTick OAuth.
+3. Tokeny se automaticky pošlou na VPS
+4. Hotovo! Nic se neukládá lokálně.
 """
 
 import webbrowser
@@ -15,7 +13,11 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 import requests
 import json
-from pathlib import Path
+import os
+from dotenv import load_dotenv
+
+# Načti .env
+load_dotenv()
 
 # Notion OAuth konfigurace (public client)
 CLIENT_ID = "YvWLaE2nKO861jM1"
@@ -23,8 +25,9 @@ REDIRECT_URI = "http://localhost:8080/callback"
 AUTH_URL = "https://mcp.notion.com/authorize"
 TOKEN_URL = "https://mcp.notion.com/token"
 
-# Cesta k token souboru (stejné jako TickTick)
-TOKEN_FILE = Path(__file__).parent / "src" / "lib" / "tokens" / "notion_tokens.json"
+# VPS konfigurace z .env
+VPS_URL = os.getenv("VPS_URL", "")
+API_KEY = os.getenv("API_KEY", "")
 
 # Globální proměnná pro uložení kódu
 auth_code = None
@@ -60,8 +63,54 @@ class CallbackHandler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):
         pass  # Vypni logy
 
+def upload_tokens_to_vps(token_data):
+    """Nahraje tokeny přímo na VPS"""
+    
+    if not VPS_URL:
+        print("❌ Error: VPS_URL not set in .env file")
+        return False
+    
+    if not API_KEY:
+        print("❌ Error: API_KEY not set in .env file")
+        return False
+    
+    print()
+    print("=" * 60)
+    print(f"Uploading tokens to VPS: {VPS_URL}")
+    print("=" * 60)
+    print()
+    
+    # Pošli data jako query parametry
+    url = f"{VPS_URL}/api/notion/upload-tokens"
+    headers = {
+        "X-API-Key": API_KEY
+    }
+    params = {
+        "access_token": token_data['access_token'],
+        "refresh_token": token_data.get('refresh_token', '')
+    }
+    
+    try:
+        response = requests.post(url, headers=headers, params=params, timeout=10)
+        response.raise_for_status()
+        
+        result = response.json()
+        print("✅ SUCCESS!")
+        print(f"   {result.get('detail')}")
+        print()
+        print("Notion MCP is now available on your VPS!")
+        print("=" * 60)
+        return True
+        
+    except requests.exceptions.RequestException as e:
+        print(f"❌ Upload failed: {e}")
+        if hasattr(e, 'response') and e.response is not None:
+            print(f"   Response: {e.response.text}")
+        print("=" * 60)
+        return False
+
 def get_access_token():
-    """Získá access token pomocí OAuth flow"""
+    """Získá access token pomocí OAuth flow a pošle na VPS"""
     
     print("=" * 60)
     print("Notion OAuth Access Token Getter")
@@ -105,7 +154,7 @@ def get_access_token():
         "client_id": CLIENT_ID
     }
     
-    response = requests.post(TOKEN_URL, data=data)
+    response = requests.post(TOKEN_URL, data=data, timeout=30)
     
     if response.status_code != 200:
         print(f"❌ Error: {response.status_code}")
@@ -116,93 +165,23 @@ def get_access_token():
     
     print("✓ Access token received")
     print()
-    
-    # Ulož do JSON souboru
-    TOKEN_FILE.parent.mkdir(parents=True, exist_ok=True)
-    
-    with open(TOKEN_FILE, 'w') as f:
-        json.dump(token_data, f, indent=2)
-    
-    print("=" * 60)
-    print(f"✓ Tokens saved to: {TOKEN_FILE}")
-    print("=" * 60)
-    print()
-    print("ACCESS TOKEN:")
+    print("ACCESS TOKEN (will be sent to VPS):")
     print(token_data['access_token'])
     print()
     
     if 'refresh_token' in token_data:
-        print("REFRESH TOKEN:")
+        print("REFRESH TOKEN (will be sent to VPS):")
         print(token_data['refresh_token'])
         print()
     
-    if 'expires_in' in token_data:
-        print(f"Expires in: {token_data['expires_in']} seconds (~1 hour)")
-        print()
-    
-    print("=" * 60)
-    print("Tokens saved successfully!")
-    print("=" * 60)
+    # 6. Pošli tokeny na VPS
+    upload_tokens_to_vps(token_data)
     
     return token_data
 
-def upload_to_vps(token_data):
-    """Nahraje tokeny na VPS"""
-    import os
-    from dotenv import load_dotenv
-    
-    load_dotenv()
-    
-    VPS_URL = os.getenv("VPS_URL", "")
-    API_KEY = os.getenv("API_KEY", "")
-    
-    print()
-    print("=" * 60)
-    print("Upload tokens to VPS?")
-    print("=" * 60)
-    choice = input("Upload to VPS? (y/N): ").strip().lower()
-    
-    if choice != 'y':
-        print("Skipped. You can upload later with: python upload_notion_tokens.py")
-        return
-    
-    print()
-    print(f"Uploading to {VPS_URL}...")
-    
-    # Pošli data jako query parametry (ne JSON body)
-    url = f"{VPS_URL}/api/notion/upload-tokens"
-    headers = {
-        "X-API-Key": API_KEY
-    }
-    params = {
-        "access_token": token_data['access_token'],
-        "refresh_token": token_data.get('refresh_token', '')
-    }
-    
-    try:
-        response = requests.post(url, headers=headers, params=params, timeout=10)
-        response.raise_for_status()
-        
-        result = response.json()
-        print()
-        print("✅ SUCCESS!")
-        print(f"   {result.get('detail')}")
-        print()
-        print("Notion MCP is now available on your VPS!")
-        
-    except requests.exceptions.RequestException as e:
-        print()
-        print(f"❌ Upload failed: {e}")
-        if hasattr(e, 'response') and e.response is not None:
-            print(f"   Response: {e.response.text}")
-        print()
-        print("You can try again later with: python upload_notion_tokens.py")
-
 if __name__ == "__main__":
     try:
-        tokens = get_access_token()
-        if tokens:
-            upload_to_vps(tokens)
+        get_access_token()
     except KeyboardInterrupt:
         print("\n\nCancelled by user")
     except Exception as e:

@@ -21,10 +21,12 @@ services:
       - LOG_LEVEL=info
     env_file:
       - .env
-    volumes:
-      # Persistent token storage - tokeny přežijí restart containeru
-      - ./src/lib/tokens:/app/src/lib/tokens
-      # Mount application code for development (comment out for production)
+    # volumes:
+      # Tokeny se ukládají přímo do Docker image (ne jako volume)
+      # Tokeny uploadujete pomocí: python3 get_notion_token.py
+      # který je pošle přes API endpoint /api/notion/upload-tokens
+      
+      # Pro development můžete odmountovat celý src adresář:
       # - ./src:/app/src
       # - ./main.py:/app/main.py
       

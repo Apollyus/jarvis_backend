@@ -102,6 +102,9 @@ async def ticktick_callback(request: Request):
         }
     tokens = resp.json()
     tokens["obtained_at"] = int(time.time())
+    # Přidej client_id a client_secret pro refresh token
+    tokens["client_id"] = TICKTICK_CLIENT_ID
+    tokens["client_secret"] = TICKTICK_CLIENT_SECRET
     Path(TICKTICK_TOKEN_PATH).parent.mkdir(parents=True, exist_ok=True)
     with open(TICKTICK_TOKEN_PATH, "w", encoding="utf-8") as f:
         json.dump(tokens, f, ensure_ascii=False, indent=2)

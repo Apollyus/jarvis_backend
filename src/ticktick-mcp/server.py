@@ -29,6 +29,9 @@ def initialize_client():
             return False
         logger.info(f"Successfully connected to TickTick API with {len(projects)} projects")
         return True
+    except RuntimeError as e:
+        logger.warning(f"TickTick client not ready: {e}")
+        return False
     except Exception as e:
         logger.error(f"Failed to initialize TickTick client: {e}")
         return False
@@ -75,7 +78,7 @@ def format_project(project: Dict) -> str:
 async def get_projects() -> str:
     if not ticktick:
         if not initialize_client():
-            return "Failed to initialize TickTick client. Please check your token file."
+            return "TickTick není připojen. Přihlas se prosím přes UI na https://ai.vojtechfal.cz/ticktick/login"
     try:
         projects = ticktick.get_projects()
         if 'error' in projects:

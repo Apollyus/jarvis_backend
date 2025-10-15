@@ -25,15 +25,30 @@ class TickTickClient:
 
     def _load_tokens(self):
         if not TOKEN_PATH.exists():
-            raise RuntimeError(f"Soubor s tokenem neexistuje: {TOKEN_PATH}")
-        with open(TOKEN_PATH, "r", encoding="utf-8") as f:
-            data = json.load(f)
+            # Vytvoř složku a soubor, pokud neexistuje
+            TOKEN_PATH.parent.mkdir(parents=True, exist_ok=True)
+            with open(TOKEN_PATH, "w", encoding="utf-8") as f:
+                json.dump({}, f)
+            raise RuntimeError(f"Soubor s tokenem neexistoval, vytvořen prázdný: {TOKEN_PATH}")
+        
+        try:
+            with open(TOKEN_PATH, "r", encoding="utf-8") as f:
+                content = f.read().strip()
+                if not content:
+                    # Soubor je prázdný, vytvoř prázdný JSON
+                    data = {}
+                else:
+                    data = json.loads(content)
+        except json.JSONDecodeError as e:
+            raise RuntimeError(f"Neplatný JSON v souboru {TOKEN_PATH}: {e}")
+        
         self.access_token = data.get("access_token")
         self.refresh_token = data.get("refresh_token")
         self.client_id = data.get("client_id")
         self.client_secret = data.get("client_secret")
+        
         if not self.access_token:
-            raise RuntimeError("Chybí access_token v ticktick-mcp.json")
+            raise RuntimeError("Chybí access_token v ticktick_tokens.json. Přihlas se přes UI.")
 
     def _refresh_access_token(self) -> bool:
         if not self.refresh_token or not self.client_id or not self.client_secret:

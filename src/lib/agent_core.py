@@ -44,7 +44,7 @@ class AgentService:
         if self._initialized:
             return
         self.llm = ChatOpenAI(
-            model="google/gemini-2.5-flash-lite-preview-09-2025",
+            model="anthropic/claude-haiku-4.5",
             openai_api_base="https://openrouter.ai/api/v1",
             openai_api_key=OPENROUTER_API_KEY,
             temperature=0,
@@ -60,6 +60,15 @@ class AgentService:
                 },
                 "linkup": {
                     "url": f"https://mcp.linkup.so/sse?apiKey={LINKUP_API_KEY}"
+                },
+                "fetch": {
+                    "command": "npx",
+                    "args": [
+                        "mcp-fetch-server"
+                    ], 
+                    "env": {
+                        "max_length": "50000"
+                    }
                 }
             }
         }

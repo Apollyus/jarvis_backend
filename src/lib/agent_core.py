@@ -69,6 +69,15 @@ class AgentService:
                     "env": {
                         "max_length": "50000"
                     }
+                },
+                "WhatsApp": {
+                    "command": "uv",
+                    "args": [
+                        "--directory",
+                        "/app/whatsapp-mcp/whatsapp-mcp-server",
+                        "run",
+                        "main.py"
+                    ]
                 }
             }
         }

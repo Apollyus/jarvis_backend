@@ -2,24 +2,28 @@
 
 set -e
 
-echo "🚀 Spouštění Jarvis Backend s WhatsApp MCP..."
+echo "🚀 Spouštění Jarvis Backend..."
 
-# Spusť WhatsApp bridge na pozadí
-echo "📱 Spouštění WhatsApp bridge..."
-cd /app/whatsapp-mcp/whatsapp-bridge
-go run main.go &
-WHATSAPP_PID=$!
-
-# Čekej, až se WhatsApp bridge spustí
-sleep 5
+# Check if WhatsApp bridge exists and start it
+if [ -d "/app/src/whatsapp-mcp/whatsapp-bridge" ] && [ -f "/app/src/whatsapp-mcp/whatsapp-bridge/main.go" ]; then
+    echo "📱 Spouštění WhatsApp bridge..."
+    cd /app/src/whatsapp-mcp/whatsapp-bridge
+    go run main.go &
+    WHATSAPP_PID=$!
+    
+    # Čekej, až se WhatsApp bridge spustí
+    sleep 5
+    
+    # Cleanup
+    trap "kill $WHATSAPP_PID" EXIT
+else
+    echo "⚠️  WhatsApp bridge nenalezen - pokračuji bez něj..."
+fi
 
 # Spusť Jarvis Backend
 echo "🤖 Spouštění Jarvis Backend..."
 cd /app
 python main.py --host 0.0.0.0 --port 8000
-
-# Cleanup
-trap "kill $WHATSAPP_PID" EXIT
 
 📁 Struktura projektu
 

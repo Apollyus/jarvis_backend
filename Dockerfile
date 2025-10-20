@@ -14,13 +14,18 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 RUN apt-get update && apt-get install -y \
     gcc \
     curl \
+    wget \
+    tar \
+    git \
     && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && apt-get install -y nodejs \
-    && rm -rf /var/lib/apt/lists/* \
-    && apt install -y wget tar \
     && wget https://go.dev/dl/go1.23.2.linux-amd64.tar.gz \
     && tar -C /usr/local -xzf go1.23.2.linux-amd64.tar.gz \
-    && rm go1.23.2.linux-amd64.tar.gzgz
+    && rm go1.23.2.linux-amd64.tar.gz \
+    && rm -rf /var/lib/apt/lists/*
+
+# Add Go to PATH
+ENV PATH="/usr/local/go/bin:${PATH}"
 
 # Copy requirements file
 COPY requirements.txt .
@@ -30,6 +35,17 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
 COPY . .
+
+# Copy entrypoint script and make it executable
+COPY entrypoint.sh /app/
+RUN chmod +x /app/entrypoint.sh
+
+# Update Go dependencies for WhatsApp bridge
+RUN if [ -d "/app/src/whatsapp-mcp/whatsapp-bridge" ] && [ -f "/app/src/whatsapp-mcp/whatsapp-bridge/go.mod" ]; then \
+        cd /app/src/whatsapp-mcp/whatsapp-bridge && \
+        go mod download && \
+        go mod tidy; \
+    fi
 
 # Create a non-root user to run the application
 RUN useradd -m -u 1000 appuser && \
@@ -41,19 +57,12 @@ RUN useradd -m -u 1000 appuser && \
 
 USER appuser
 
-RUN cd whatsapp-bridge && \
-    go run main.go
-
 # Expose the application port
 EXPOSE 8000 5000
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD python -c "import requests; requests.get('http://localhost:8000/health')" || exit 1
-
-# Copy entrypoint script
-COPY entrypoint.sh /app/
-RUN chmod +x /app/entrypoint.sh
 
 # Run the application
 CMD ["/app/entrypoint.sh"]

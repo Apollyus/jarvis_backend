@@ -113,8 +113,8 @@ class AgentService:
                     ]
                 },
                 "n8n-mcp": {
-                    "command": "npx",
-                    "args": ["n8n-mcp"],
+                    "command": "n8n-mcp",
+                    "args": [],
                     "env": {
                         "MCP_MODE": "stdio",
                         "LOG_LEVEL": "error",

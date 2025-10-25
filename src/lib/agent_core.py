@@ -85,6 +85,14 @@ class AgentService:
         # Získat Notion access token
         notion_token = get_notion_access_token()
         
+        logger.info("🚀 Začínám inicializaci MCP serverů...")
+        logger.info(f"📍 N8N_API_URL: {N8N_API_URL}")
+        logger.info(f"📍 N8N_API_KEY: {'*' * len(N8N_API_KEY) if N8N_API_KEY else 'None'}")
+        
+        # Zjisti, jestli jsou jednotlivé MCP servery povolené
+        enable_whatsapp = os.getenv("ENABLE_WHATSAPP", "false").lower() == "true"
+        enable_n8n = os.getenv("ENABLE_N8N", "true").lower() == "true"
+        
         config = {
             "mcpServers": {
                 "TickTick": {
@@ -102,29 +110,41 @@ class AgentService:
                     "env": {
                         "max_length": "50000"
                     }
-                },
-                "WhatsApp": {
-                    "command": "uv",
-                    "args": [
-                        "--directory",
-                        "/app/whatsapp-mcp/whatsapp-mcp-server",
-                        "run",
-                        "main.py"
-                    ]
-                },
-                "n8n-mcp": {
-                    "command": "n8n-mcp",
-                    "args": [],
-                    "env": {
-                        "MCP_MODE": "stdio",
-                        "LOG_LEVEL": "error",
-                        "DISABLE_CONSOLE_OUTPUT": "true",
-                        "N8N_API_URL": f"{N8N_API_URL}",
-                        "N8N_API_KEY": f"{N8N_API_KEY}"
-                    }
                 }
             }
         }
+        
+        # Přidat WhatsApp pouze pokud je povolen
+        if enable_whatsapp:
+            logger.info("✅ Přidávám WhatsApp MCP server")
+            config["mcpServers"]["WhatsApp"] = {
+                "command": "uv",
+                "args": [
+                    "--directory",
+                    "/app/whatsapp-mcp/whatsapp-mcp-server",
+                    "run",
+                    "main.py"
+                ]
+            }
+        else:
+            logger.info("⏭️  WhatsApp MCP server je zakázán (ENABLE_WHATSAPP=false)")
+        
+        # Přidat N8N pouze pokud je povolen
+        if enable_n8n:
+            logger.info("✅ Přidávám N8N MCP server")
+            config["mcpServers"]["n8n"] = {
+                "command": "n8n-mcp",
+                "args": [],
+                "env": {
+                    "MCP_MODE": "stdio",
+                    "LOG_LEVEL": "error",
+                    "DISABLE_CONSOLE_OUTPUT": "true",
+                    "N8N_API_URL": f"{N8N_API_URL}",
+                    "N8N_API_KEY": f"{N8N_API_KEY}"
+                }
+            }
+        else:
+            logger.info("⏭️  N8N MCP server je zakázán (ENABLE_N8N=false)")
         
         # Přidat Notion pouze pokud máme validní token
         # Používáme headers místo auth, abychom se vyhnuli automatickému OAuth flow
@@ -137,7 +157,42 @@ class AgentService:
             }
         else:
             logger.warning("⚠️  Notion není nakonfigurován - chybí access token")
-        self.client = MCPClient.from_dict(config)
+        
+        logger.info(f"🔧 Inicializuji MCP klienta s těmito servery: {list(config['mcpServers'].keys())}")
+        
+        try:
+            self.client = MCPClient.from_dict(config)
+        except Exception as e:
+            logger.error(f"❌ Chyba při vytváření MCP klienta: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            raise
+        
+        logger.info("✅ MCP klient úspěšně vytvořen")
+        
+        # Počkat na inicializaci sessions (dělá se asynchronně při prvním použití agenta)
+        logger.info("⏳ Čekám na vytvoření MCP sessions...")
+        await asyncio.sleep(1)
+        
+        # Zkusit získat informace o aktivních sessions a nástrojích
+        try:
+            active_sessions = self.client.get_all_active_sessions()
+            logger.info(f"📡 Aktivní sessions: {list(active_sessions.keys())}")
+            
+            # Pro každou session vypsat dostupné nástroje
+            for server_name, session in active_sessions.items():
+                try:
+                    if session.is_connected():
+                        tools = await session.list_tools()
+                        tool_names = [tool.name for tool in tools]
+                        logger.info(f"🔧 Server '{server_name}': {len(tools)} nástrojů - {tool_names}")
+                    else:
+                        logger.warning(f"⚠️  Server '{server_name}': není připojen")
+                except Exception as e:
+                    logger.warning(f"⚠️  Server '{server_name}': chyba při získávání nástrojů - {e}")
+        except Exception as e:
+            logger.warning(f"⚠️  Nelze získat informace o sessions: {e}")
+        
         self._initialized = True
     
     async def reinitialize_client(self):
@@ -173,6 +228,7 @@ class AgentService:
             }
         session = sessions[session_id]
         # Vytvořit nového agenta pro tento dotaz
+        logger.info(f"🤖 Vytvářím MCPAgent pro session: {session_id}")
         agent = MCPAgent(
             llm=self.llm,
             client=self.client,
@@ -180,6 +236,11 @@ class AgentService:
             system_prompt=system_prompt,
             memory_enabled=True
         )
+        
+        # Logovat dostupné nástroje po vytvoření agenta
+        # (nástroje se vytvoří až při inicializaci, která proběhne při run())
+        logger.info(f"📋 Agent vytvořen pro session {session_id}")
+        
         # Předat historii do agenta (bez aktuální zprávy)
         for msg in session["history"]:
             if msg["role"] == "user":
@@ -190,6 +251,19 @@ class AgentService:
         # Spustit agenta s aktuální zprávou - pokusit se obnovit při auth chybě
         try:
             result = await agent.run(message)
+            
+            # Po prvním běhu logovat dostupné nástroje
+            if hasattr(agent, '_tools') and agent._tools:
+                tool_names = [tool.name for tool in agent._tools]
+                logger.info(f"🔧 Agent má k dispozici {len(tool_names)} nástrojů: {tool_names}")
+                
+                # Specificky zkontroluj n8n nástroje
+                n8n_tools = [name for name in tool_names if 'n8n' in name.lower()]
+                if n8n_tools:
+                    logger.info(f"✅ N8N nástroje nalezeny: {n8n_tools}")
+                else:
+                    logger.warning(f"⚠️  Žádné N8N nástroje mezi dostupnými nástroji!")
+            
         except Exception as e:
             error_msg = str(e).lower()
             # Pokud je to auth error (401, unauthorized, atd.), zkus reinicializovat

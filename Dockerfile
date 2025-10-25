@@ -40,9 +40,17 @@ RUN if [ "$ENABLE_WHATSAPP" = "true" ]; then \
 # Add Go to PATH
 ENV PATH="/usr/local/go/bin:${PATH}"
 
+# Add npm global bin to PATH (both common locations)
+ENV PATH="/usr/local/bin:/usr/lib/node_modules/.bin:${PATH}"
+
 # Conditionally install n8n-mcp (only if n8n is enabled)
 RUN if [ "$ENABLE_N8N" = "true" ]; then \
-        npm install -g n8n-mcp; \
+        npm install -g n8n-mcp && \
+        npm list -g n8n-mcp && \
+        echo "=== N8N-MCP Installation Verification ===" && \
+        which n8n-mcp && \
+        n8n-mcp --version || echo "n8n-mcp --version failed" && \
+        ls -la $(npm root -g)/n8n-mcp/ || true; \
     fi
 
 # Copy requirements file

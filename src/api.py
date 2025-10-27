@@ -40,6 +40,10 @@ from auth import (
     get_user_count
 )
 
+# Import session manager
+sys.path.insert(0, str(Path(__file__).parent / "lib"))
+from session_manager import get_session_manager
+
 app = FastAPI(title="MCP Agent API")
 
 # CORS pro Next.js (běží defaultně na localhost:3000)
@@ -53,7 +57,17 @@ app.add_middleware(
 
 class ChatMessage(BaseModel):
     message: str
-    session_id: str = "default"
+    session_id: str = None  # Volitelné - pokud není, backend vytvoří nové
+
+class NewSessionResponse(BaseModel):
+    session_id: str
+    message: str
+
+class SessionInfo(BaseModel):
+    session_id: str
+    message_count: int
+    updated_at: str
+    expires_in_seconds: int = None
 
 # TickTick OAuth 2.0 - zahájení autentizace
 @app.get("/api/ticktick/auth")
@@ -239,8 +253,14 @@ async def login(request: LoginRequest):
 # REST endpoint (jednodušší varianta) - CHRÁNĚNÝ
 @app.post("/api/chat")
 async def chat(request: ChatMessage, api_key: str = Depends(verify_api_key)):
-    result = await run_agent_query(request.message, request.session_id)
-    return {"response": result, "session_id": request.session_id}
+    # Pokud není session_id, vytvoř nové
+    import uuid
+    session_id = request.session_id
+    if session_id is None:
+        session_id = f"sess_{uuid.uuid4().hex[:12]}"
+    
+    result = await run_agent_query(request.message, session_id)
+    return {"response": result, "session_id": session_id}
 
 # WebSocket endpoint (pro streaming) - CHRÁNĚNÝ
 @app.websocket("/ws/chat")
@@ -363,9 +383,73 @@ async def root():
 @app.get("/health")
 async def health():
     auth_status = "nakonfigurováno" if is_auth_configured() else "není_nakonfigurováno"
+    
+    # Zkontrolovat Redis
+    session_manager = get_session_manager()
+    redis_status = "connected" if session_manager._connected else "disconnected"
+    
     return {
         "status": "healthy",
-        "authentication": auth_status
+        "authentication": auth_status,
+        "redis": redis_status
+    }
+
+# === SESSION MANAGEMENT ENDPOINTY ===
+
+@app.post("/api/sessions/new", response_model=NewSessionResponse)
+async def create_new_session(api_key: str = Depends(verify_api_key)):
+    """
+    Vytvoří novou session a vrátí její ID
+    Frontend by měl použít toto ID pro následující zprávy
+    """
+    import uuid
+    session_id = f"sess_{uuid.uuid4().hex[:12]}"
+    
+    return NewSessionResponse(
+        session_id=session_id,
+        message=f"Nová session vytvořena. Použijte toto session_id pro další zprávy."
+    )
+
+@app.delete("/api/sessions/{session_id}")
+async def delete_session(session_id: str, api_key: str = Depends(verify_api_key)):
+    """Smaže session (pro "New Chat" funkci)"""
+    agent_service = get_agent_service()
+    agent_service.clear_session(session_id)
+    
+    return {"message": f"Session {session_id} byla smazána"}
+
+@app.get("/api/sessions")
+async def list_sessions(api_key: str = Depends(verify_api_key)):
+    """Vrátí seznam všech aktivních sessions"""
+    session_manager = get_session_manager()
+    session_ids = session_manager.list_sessions()
+    
+    return {
+        "sessions": session_ids,
+        "count": len(session_ids)
+    }
+
+@app.get("/api/sessions/{session_id}", response_model=SessionInfo)
+async def get_session_info(session_id: str, api_key: str = Depends(verify_api_key)):
+    """Získá informace o konkrétní session"""
+    session_manager = get_session_manager()
+    info = session_manager.get_session_info(session_id)
+    
+    if info is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    return SessionInfo(**info)
+
+@app.get("/api/sessions/{session_id}/history")
+async def get_session_history(session_id: str, api_key: str = Depends(verify_api_key)):
+    """Vrátí celou historii konverzace"""
+    agent_service = get_agent_service()
+    history = agent_service.get_session_history(session_id)
+    
+    return {
+        "session_id": session_id,
+        "history": history,
+        "message_count": len(history)
     }
 
 if __name__ == "__main__":

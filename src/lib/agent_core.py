@@ -8,6 +8,7 @@ import os
 import sys
 from pathlib import Path
 from typing import Dict, Any
+from session_manager import get_session_manager
 
 logger = logging.getLogger(__name__)
 
@@ -36,8 +37,11 @@ if not N8N_API_KEY:
     logger.error("❌ N8N_API_KEY není nastaven v .env souboru")
     raise ValueError("N8N_API_KEY není nastaven v .env souboru")
 
-# Globální sessions pro ukládání historie konverzací
+# Globální sessions pro ukládání historie konverzací (fallback když Redis není dostupný)
 sessions: Dict[str, Dict[str, Any]] = {}
+
+# Session manager (Redis)
+session_manager = get_session_manager()
 
 # Systémový prompt pro agenta
 system_prompt = """
@@ -221,12 +225,23 @@ class AgentService:
             Odpověď agenta
         """
         await self.initialize()
+        
         # Získat nebo vytvořit session
-        if session_id not in sessions:
-            sessions[session_id] = {
-                "history": []
-            }
-        session = sessions[session_id]
+        # Nejdřív zkus Redis, pak fallback na memory
+        session = session_manager.load_session(session_id)
+        
+        if session is None:
+            # Zkus memory fallback
+            if session_id in sessions:
+                session = sessions[session_id]
+                logger.info(f"📝 Načtena session z paměti: {session_id}")
+            else:
+                # Nová session
+                session = {"history": []}
+                logger.info(f"🆕 Vytvořena nová session: {session_id}")
+        else:
+            logger.info(f"💾 Načtena session z Redis: {session_id}")
+        
         # Vytvořit nového agenta pro tento dotaz
         logger.info(f"🤖 Vytvářím MCPAgent pro session: {session_id}")
         agent = MCPAgent(
@@ -286,6 +301,15 @@ class AgentService:
             "role": "assistant",
             "content": result
         })
+        
+        # Uložit do Redis (s fallbackem do memory)
+        if not session_manager.save_session(session_id, session["history"]):
+            # Redis není dostupný, ulož do memory
+            sessions[session_id] = session
+            logger.warning(f"⚠️  Session {session_id} uložena pouze do paměti (Redis nedostupný)")
+        else:
+            logger.info(f"💾 Session {session_id} uložena do Redis")
+        
         return result
 
     def get_session_history(self, session_id: str = "default") -> list:
@@ -296,6 +320,12 @@ class AgentService:
         Returns:
             Seznam zpráv v historii
         """
+        # Zkus Redis
+        session = session_manager.load_session(session_id)
+        if session:
+            return session["history"]
+        
+        # Fallback na memory
         if session_id in sessions:
             return sessions[session_id]["history"]
         return []
@@ -306,6 +336,10 @@ class AgentService:
         Args:
             session_id: ID session k vymazání
         """
+        # Smaž z Redis
+        session_manager.delete_session(session_id)
+        
+        # Smaž z memory
         if session_id in sessions:
             del sessions[session_id]
 

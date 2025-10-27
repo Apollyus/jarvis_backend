@@ -19,6 +19,7 @@ services:
       - API_HOST=0.0.0.0
       - API_PORT=8000
       - LOG_LEVEL=info
+      - REDIS_URL=redis://redis:6379
     env_file:
       - .env
     # volumes:
@@ -35,6 +36,8 @@ services:
     restart: unless-stopped
     networks:
       - jarvis-network
+    depends_on:
+      - redis
     healthcheck:
       test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8000/health')"]
       interval: 30s
@@ -42,6 +45,26 @@ services:
       retries: 3
       start_period: 10s
 
+  redis:
+    image: redis:7-alpine
+    container_name: jarvis-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    restart: unless-stopped
+    networks:
+      - jarvis-network
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
 networks:
   jarvis-network:
     driver: bridge
+
+volumes:
+  redis-data:

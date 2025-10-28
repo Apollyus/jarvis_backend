@@ -6,6 +6,8 @@ services:
     container_name: jarvis-backend
     ports:
       - "8000:8000"
+    env_file:
+      - .env  # Načte VŠECHNY proměnné z .env přímo do kontejneru
     environment:
       # Load environment variables from .env file
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
@@ -13,13 +15,15 @@ services:
       - API_KEY=${API_KEY}
       - USERNAME=${USERNAME}
       - PASSWORD=${PASSWORD}
+      # TickTick OAuth
+      - TICKTICK_CLIENT_ID=${TICKTICK_CLIENT_ID}
+      - TICKTICK_CLIENT_SECRET=${TICKTICK_CLIENT_SECRET}
+      - TICKTICK_CALLBACK_URL=${TICKTICK_CALLBACK_URL}
       # Optional: Override default settings
       - API_HOST=0.0.0.0
       - API_PORT=8000
       - LOG_LEVEL=info
       - REDIS_URL=redis://redis:6379
-    env_file:
-      - .env
     restart: unless-stopped
     networks:
       - jarvis-network

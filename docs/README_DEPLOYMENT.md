@@ -43,11 +43,19 @@ nano .env  # nebo vim, vi, atd.
 
 Vyplňte následující proměnné:
 ```env
+# API Keys
 OPENROUTER_API_KEY=your_openrouter_api_key
 NOTION_API_KEY=your_notion_api_key
+
+# Authentication
 API_KEY=your_jarvis_api_key
 USERNAME=your_username
 PASSWORD=your_password
+
+# TickTick OAuth (volitelné - pokud chcete používat TickTick)
+TICKTICK_CLIENT_ID=your_ticktick_client_id
+TICKTICK_CLIENT_SECRET=your_ticktick_client_secret
+TICKTICK_CALLBACK_URL=https://your-domain.com/api/ticktick/callback
 ```
 
 ### 4. Spuštění na serveru

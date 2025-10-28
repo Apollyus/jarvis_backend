@@ -104,7 +104,8 @@ class AgentService:
                     "args": ["src/ticktick-mcp/server.py", "run"]
                 },
                 "linkup": {
-                    "url": f"https://mcp.linkup.so/sse?apiKey={LINKUP_API_KEY}"
+                    "command": "npx",
+                    "args": ["-y", "linkup-mcp-server", "apiKey=" + LINKUP_API_KEY]
                 },
                 "fetch": {
                     "command": "npx",

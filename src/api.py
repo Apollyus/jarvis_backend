@@ -324,33 +324,48 @@ async def websocket_chat(websocket: WebSocket):
     
     agent_service = get_agent_service()
     
+    # Session ID pro toto WebSocket připojení
+    import uuid
+    websocket_session_id = None
+    
     try:
         while True:
             # Přijmout zprávu od klienta
             data = await websocket.receive_text()
             message_data = json.loads(data)
             user_message = message_data.get("message", "")
+            client_session_id = message_data.get("session_id")
+            
+            # Pokud klient poslal session_id, použij ho
+            # Jinak pokud ještě nemáme session_id pro toto připojení, vytvoř nové
+            if client_session_id:
+                websocket_session_id = client_session_id
+            elif websocket_session_id is None:
+                websocket_session_id = f"sess_{uuid.uuid4().hex[:12]}"
             
             # Poslat potvrzení
             await websocket.send_json({
                 "type": "status",
-                "message": "Processing..."
+                "message": "Processing...",
+                "session_id": websocket_session_id
             })
             
             # Spustit agenta
             try:
-                result = await agent_service.run_query(user_message)
+                result = await agent_service.run_query(user_message, websocket_session_id)
                 
                 # Poslat výsledek
                 await websocket.send_json({
                     "type": "response",
                     "message": result,
-                    "done": True
+                    "done": True,
+                    "session_id": websocket_session_id
                 })
             except Exception as e:
                 await websocket.send_json({
                     "type": "error",
-                    "message": str(e)
+                    "message": str(e),
+                    "session_id": websocket_session_id
                 })
                 
     except WebSocketDisconnect:
@@ -361,23 +376,28 @@ async def websocket_chat(websocket: WebSocket):
 
 # Server-Sent Events varianta (alternativa k WebSocket) - PROTECTED
 @app.get("/api/chat/stream")
-async def chat_stream(message: str, api_key: str = Depends(verify_api_key)):
+async def chat_stream(message: str, session_id: str = None, api_key: str = Depends(verify_api_key)):
     from fastapi.responses import StreamingResponse
+    import uuid
+    
+    # Pokud není session_id, vytvoř nové
+    if session_id is None:
+        session_id = f"sess_{uuid.uuid4().hex[:12]}"
     
     async def event_generator():
         agent_service = get_agent_service()
         
         # Odeslat status
-        yield f"data: {json.dumps({'type': 'status', 'message': 'Processing...'})}\n\n"
+        yield f"data: {json.dumps({'type': 'status', 'message': 'Processing...', 'session_id': session_id})}\n\n"
         
         try:
             # Spustit agenta
-            result = await agent_service.run_query(message)
+            result = await agent_service.run_query(message, session_id)
             
             # Odeslat výsledek
-            yield f"data: {json.dumps({'type': 'response', 'message': result, 'done': True})}\n\n"
+            yield f"data: {json.dumps({'type': 'response', 'message': result, 'done': True, 'session_id': session_id})}\n\n"
         except Exception as e:
-            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e), 'session_id': session_id})}\n\n"
     
     return StreamingResponse(
         event_generator(),

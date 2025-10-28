@@ -1,0 +1,58 @@
+version: '3.8'
+
+services:
+  jarvis-backend:
+    image: user2106874/jarvis-backend:latest  # Používá image z Docker Hubu
+    container_name: jarvis-backend
+    ports:
+      - "8000:8000"
+    environment:
+      # Load environment variables from .env file
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+      - NOTION_API_KEY=${NOTION_API_KEY}
+      - API_KEY=${API_KEY}
+      - USERNAME=${USERNAME}
+      - PASSWORD=${PASSWORD}
+      # Optional: Override default settings
+      - API_HOST=0.0.0.0
+      - API_PORT=8000
+      - LOG_LEVEL=info
+      - REDIS_URL=redis://redis:6379
+    env_file:
+      - .env
+    restart: unless-stopped
+    networks:
+      - jarvis-network
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  redis:
+    image: redis:7-alpine
+    container_name: jarvis-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    restart: unless-stopped
+    networks:
+      - jarvis-network
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+networks:
+  jarvis-network:
+    driver: bridge
+
+volumes:
+  redis-data:

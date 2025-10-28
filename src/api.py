@@ -97,7 +97,21 @@ async def ticktick_callback(request: Request):
     # Log the received code for debugging
     print(f"🔑 Received authorization code: {code}")
     print(f"📍 Client ID: {TICKTICK_CLIENT_ID}")
-    print(f"🔗 Redirect URI: {TICKTICK_CALLBACK_URL}")
+    print(f"� Client Secret: {'*' * len(TICKTICK_CLIENT_SECRET) if TICKTICK_CLIENT_SECRET else 'MISSING!'}")
+    print(f"�🔗 Redirect URI: {TICKTICK_CALLBACK_URL}")
+    
+    # Verify credentials are present
+    if not TICKTICK_CLIENT_ID or not TICKTICK_CLIENT_SECRET:
+        return {
+            "error": "Missing credentials",
+            "detail": f"TICKTICK_CLIENT_ID: {'present' if TICKTICK_CLIENT_ID else 'MISSING'}, "
+                     f"TICKTICK_CLIENT_SECRET: {'present' if TICKTICK_CLIENT_SECRET else 'MISSING'}",
+            "env_vars_check": {
+                "TICKTICK_CLIENT_ID": bool(TICKTICK_CLIENT_ID),
+                "TICKTICK_CLIENT_SECRET": bool(TICKTICK_CLIENT_SECRET),
+                "TICKTICK_CALLBACK_URL": bool(TICKTICK_CALLBACK_URL)
+            }
+        }
     
     token_url = "https://ticktick.com/oauth/token"
     scope = "tasks:read tasks:write"
@@ -109,7 +123,8 @@ async def ticktick_callback(request: Request):
     }
     
     # Basic Auth header
-    basic_auth = base64.b64encode(f"{TICKTICK_CLIENT_ID}:{TICKTICK_CLIENT_SECRET}".encode()).decode()
+    auth_string = f"{TICKTICK_CLIENT_ID}:{TICKTICK_CLIENT_SECRET}"
+    basic_auth = base64.b64encode(auth_string.encode()).decode()
     headers = {
         "Authorization": f"Basic {basic_auth}",
         "Content-Type": "application/x-www-form-urlencoded"
@@ -117,6 +132,7 @@ async def ticktick_callback(request: Request):
     
     print(f"📤 Sending token request to {token_url}")
     print(f"📦 Data: {data}")
+    print(f"🔒 Auth string length: {len(auth_string)} chars")
     
     try:
         resp = requests.post(token_url, data=data, headers=headers)

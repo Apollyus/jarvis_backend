@@ -67,6 +67,13 @@ system_prompt = """
     Dbej na to, aby tvé odpovědi byly stručné a výstižné. Nepiš zbytečně dlouhé odpovědi.
 
     Formátuj odpovědi pomocí markdownu. Mezi odstavci používej prázdné 2 řádky.
+    
+    KRITICKÉ PRAVIDLO PRO N8N NÁSTROJE:
+    Když používáš n8n_update_full_workflow nebo n8n_create_workflow, NIKDY neposílej 'nodes' nebo 'connections' jako JSON string.
+    Vždy je pošli jako přímý objekt/pole. Například:
+    ❌ ŠPATNĚ: {"nodes": "[{\"id\": \"1\"...}]"} - tohle je string!
+    ✅ SPRÁVNĚ: {"nodes": [{"id": "1"...}]} - tohle je pole objektů!
+    Totéž platí pro connections, settings a všechny ostatní složité struktury.
     """
 
 class AgentService:
